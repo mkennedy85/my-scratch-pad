@@ -101,11 +101,19 @@ measure_startup() {
     if [ "$platform" = "docker" ]; then
         echo "Starting Docker deployment..."
         cd "$PROJECT_ROOT"
-        ./scripts/docker-deploy.sh > /tmp/docker-deploy.log 2>&1
+        if ! ./scripts/docker-deploy.sh > /tmp/docker-deploy.log 2>&1; then
+            echo "Docker deployment failed:"
+            cat /tmp/docker-deploy.log
+            return 1
+        fi
     elif [ "$platform" = "vm" ]; then
         echo "Starting VM deployment..."
         cd "$PROJECT_ROOT"
-        ./scripts/vagrant-deploy.sh > /tmp/vagrant-deploy.log 2>&1
+        if ! ./scripts/vagrant-deploy.sh > /tmp/vagrant-deploy.log 2>&1; then
+            echo "VM deployment failed:"
+            cat /tmp/vagrant-deploy.log
+            return 1
+        fi
     fi
     
     if wait_for_app; then
@@ -113,6 +121,7 @@ measure_startup() {
         startup_duration=$(echo "$end_time - $start_time" | bc)
         echo "Total startup time: ${startup_duration} seconds"
         echo "$startup_duration"
+        return 0
     else
         echo "Failed to start $platform deployment"
         return 1
@@ -139,22 +148,25 @@ measure_resources() {
                 local cpu_pct=$(echo "$stats" | awk '{print $1}' | sed 's/%//')
                 local mem_usage=$(echo "$stats" | awk '{print $2}' | sed 's/MiB.*//')
                 
-                total_cpu=$(echo "$total_cpu + $cpu_pct" | bc)
-                total_memory=$(echo "$total_memory + $mem_usage" | bc)
-                
-                if (( $(echo "$mem_usage > $peak_memory" | bc -l) )); then
-                    peak_memory=$mem_usage
+                if [[ "$cpu_pct" =~ ^[0-9]*\.?[0-9]+$ ]] && [[ "$mem_usage" =~ ^[0-9]*\.?[0-9]+$ ]]; then
+                    total_cpu=$(echo "$total_cpu + $cpu_pct" | bc)
+                    total_memory=$(echo "$total_memory + $mem_usage" | bc)
+                    
+                    if (( $(echo "$mem_usage > $peak_memory" | bc -l) )); then
+                        peak_memory=$mem_usage
+                    fi
+                    
+                    measurements=$((measurements + 1))
                 fi
-                
-                measurements=$((measurements + 1))
             fi
         elif [ "$platform" = "vm" ]; then
-            # VM resource measurement (simplified)
-            vagrant ssh -c "free -m | grep '^Mem:' | awk '{print \$3}' && top -bn1 | grep 'Cpu(s)' | awk '{print \$2}' | sed 's/%us,//'" 2>/dev/null | {
-                read mem_used
-                read cpu_pct
+            # VM resource measurement
+            local vm_stats=$(vagrant ssh -c "free -m | grep '^Mem:' | awk '{print \$3}'; ps aux | awk '{sum += \$3} END {print sum}'" 2>/dev/null)
+            if [ -n "$vm_stats" ]; then
+                local mem_used=$(echo "$vm_stats" | head -1)
+                local cpu_pct=$(echo "$vm_stats" | tail -1)
                 
-                if [ -n "$mem_used" ] && [ -n "$cpu_pct" ]; then
+                if [[ "$mem_used" =~ ^[0-9]+$ ]] && [[ "$cpu_pct" =~ ^[0-9]*\.?[0-9]+$ ]]; then
                     total_memory=$(echo "$total_memory + $mem_used" | bc)
                     total_cpu=$(echo "$total_cpu + $cpu_pct" | bc)
                     
@@ -164,7 +176,7 @@ measure_resources() {
                     
                     measurements=$((measurements + 1))
                 fi
-            }
+            fi
         fi
         
         sleep $interval
@@ -179,7 +191,7 @@ measure_resources() {
         echo "Peak Memory Usage: ${peak_memory}MB"
         echo "Measurements taken: $measurements"
         
-        echo "$avg_cpu,$avg_memory,$peak_memory,$measurements"
+        echo "${avg_cpu},${avg_memory},${peak_memory},${measurements}"
     else
         echo "No resource measurements collected"
         echo "0,0,0,0"
@@ -191,7 +203,6 @@ measure_http_performance() {
     local duration=$1
     local url=$2
     local temp_file=$(mktemp)
-    local response_times=()
     local successful_requests=0
     local failed_requests=0
     local start_time=$(date +%s)
@@ -200,12 +211,19 @@ measure_http_performance() {
     echo "=== HTTP Performance Testing for $duration seconds ==="
     echo "Target URL: $url"
     
+    # Verify URL is accessible before starting
+    if ! curl -f -s "$url" > /dev/null 2>&1; then
+        echo "Error: Cannot access $url - application may not be running"
+        echo "0,0,1,0,0,0,0,0"
+        rm -f "$temp_file"
+        return 1
+    fi
+    
     while [ $(date +%s) -lt $end_time ]; do
         local response_time=$(curl -o /dev/null -s -w "%{time_total}" "$url" 2>/dev/null)
         local exit_code=$?
         
-        if [ $exit_code -eq 0 ]; then
-            response_times+=($response_time)
+        if [ $exit_code -eq 0 ] && [[ "$response_time" =~ ^[0-9]*\.?[0-9]+$ ]]; then
             successful_requests=$((successful_requests + 1))
             echo "$response_time" >> "$temp_file"
         else
@@ -216,9 +234,10 @@ measure_http_performance() {
     done
     
     local total_requests=$((successful_requests + failed_requests))
-    local requests_per_second=$(echo "scale=2; $successful_requests / $duration" | bc)
     
     if [ $successful_requests -gt 0 ]; then
+        local requests_per_second=$(echo "scale=2; $successful_requests / $duration" | bc)
+        
         # Calculate statistics
         local avg_response=$(awk '{sum+=$1} END {printf "%.4f", sum/NR}' "$temp_file")
         local min_response=$(sort -n "$temp_file" | head -1)
@@ -226,6 +245,7 @@ measure_http_performance() {
         
         # Calculate 95th percentile
         local p95_line=$(echo "scale=0; $successful_requests * 0.95 / 1" | bc)
+        if [ "$p95_line" -eq 0 ]; then p95_line=1; fi
         local p95_response=$(sort -n "$temp_file" | sed -n "${p95_line}p")
         
         echo "Total Requests: $total_requests"
@@ -302,7 +322,7 @@ benchmark_vm() {
     echo "Measuring VM startup performance..." | tee -a "$result_file"
     local startup_time=$(measure_startup "vm")
     if [ $? -ne 0 ]; then
-        echo "VM startup failed" | tee -a "$result_file"
+        echo "VM startup failed - aborting benchmark" | tee -a "$result_file"
         return 1
     fi
     echo "Startup Time: ${startup_time}s" | tee -a "$result_file"
@@ -311,6 +331,10 @@ benchmark_vm() {
     # Measure HTTP performance
     echo "Starting HTTP performance test..." | tee -a "$result_file"
     local http_stats=$(measure_http_performance $DURATION "$APP_URL")
+    if [ $? -ne 0 ]; then
+        echo "HTTP performance test failed" | tee -a "$result_file"
+        return 1
+    fi
     echo "$http_stats" | tr ',' '\n' | paste -d':' <(echo -e "Total Requests\nSuccessful Requests\nFailed Requests\nRequests per Second\nAverage Response Time\nMin Response Time\nMax Response Time\n95th Percentile") - | tee -a "$result_file"
     echo "" | tee -a "$result_file"
     
