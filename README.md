@@ -253,6 +253,224 @@ Images are automatically published as:
 | Memory Peak | 124MB | 578MB | 78.5% lower |
 ```
 
+## 🏆 Live Performance Results
+
+![Docker vs VM Performance Comparison](docs/docker-vs-vm-performance.png)
+
+### 📊 Latest Benchmark Results
+
+**Test Environment:**
+- **Host OS**: macOS 15.6.1 (Darwin 24.6.0)
+- **Hardware**: Apple M3 Pro, 18GB RAM
+- **Docker**: Version 28.0.1
+- **VM Provider**: VirtualBox (with x86 emulation on Apple Silicon)
+
+### 🚀 Key Performance Findings
+
+| Metric | Docker Container | VM (VirtualBox) | Docker Advantage |
+|--------|------------------|-----------------|------------------|
+| **🕐 Startup Time** | 18.3 seconds | 121.5 seconds | **6.6x faster** |
+| **⚡ Throughput** | 7.11 RPS | 7.13 RPS | Comparable |
+| **⏱ Response Time** | 0.0066s avg | 0.0032s avg | Comparable |
+| **💾 Memory Usage** | 46.62 MB | 2,081.48 MB | **44.6x more efficient** |
+
+### 🔍 Analysis & Interpretation
+
+**🎯 Startup Performance:**
+- **Docker containers** achieve dramatically faster startup times (6.6x faster) because they only initialize the application process
+- **VMs** require full Ubuntu OS boot, system services, and application startup on Apple Silicon with x86 emulation overhead
+
+**💾 Memory Efficiency - The Clear Winner:**
+- **Docker**: Uses only **46.62 MB** for the complete application stack
+- **VM**: Requires **2,081.48 MB** (2.08 GB) including full Ubuntu OS, system services, and virtualization overhead
+- **Result**: Docker achieves **44.6x better memory efficiency** - you could run 44 Docker containers in the same memory as 1 VM
+
+**⚡ Runtime Performance:**
+- **HTTP throughput** is nearly identical (7.11 vs 7.13 RPS) showing both platforms handle the same application workload effectively
+- **Response times** are comparable, with VM actually showing slightly faster responses (likely due to dedicated resources)
+- **Application performance** scales similarly once both platforms are running
+
+**🏗 Architecture Impact:**
+- **Apple Silicon factor**: VMs face additional performance penalty from x86 emulation when using VirtualBox
+- **Resource overhead**: VMs need full OS stack vs containers sharing the host kernel
+- **Isolation trade-off**: VMs provide complete isolation at the cost of significant resource overhead
+
+### 🎯 Cloud Computing Implications
+
+**When to Choose Containers (Docker):**
+- ✅ **Microservices architectures** - Maximum resource efficiency
+- ✅ **Rapid scaling** - 6.6x faster startup enables quick autoscaling
+- ✅ **Cost optimization** - 44x better memory efficiency = lower cloud costs
+- ✅ **CI/CD pipelines** - Fast, consistent deployments
+- ✅ **Development workflows** - Lightweight, reproducible environments
+
+**When VMs Are Still Valuable:**
+- 🔒 **Security-critical workloads** requiring complete kernel isolation
+- 🏛 **Legacy applications** that need specific OS configurations
+- 🔧 **Multi-tenant scenarios** with different OS requirements
+- 📋 **Compliance requirements** mandating hardware-level isolation
+
+**Hybrid Cloud Strategies:**
+- Many cloud platforms run containers inside VMs for security boundaries
+- Kubernetes often uses VM nodes running containerized workloads
+- The choice depends on your specific security, performance, and cost requirements
+
+### 📈 Benchmark Methodology
+
+To generate your own results:
+
+```bash
+# Run comprehensive benchmarks
+./scripts/benchmark.sh docker  # Test container performance
+./scripts/benchmark.sh vm      # Test VM performance  
+./scripts/benchmark.sh compare # Generate comparison report
+```
+
+**Measurements Include:**
+- **Startup Time**: Cold deployment to first HTTP response
+- **HTTP Performance**: 2-minute sustained load testing (120 seconds)
+- **Resource Usage**: Real-time CPU and memory monitoring
+- **Response Analysis**: Average, min, max, and 95th percentile response times
+
+### Understanding the Performance Differences
+
+**🚀 Startup Performance:**
+- **Docker containers** start significantly faster (typically 3-15 seconds) because they only need to start the application process
+- **VMs** require full OS boot (typically 30-120 seconds) including kernel initialization, system services, and user space setup
+- On Apple Silicon, VMs face additional overhead from x86 emulation when using VirtualBox
+
+**⚡ Runtime Performance:**
+- **HTTP throughput** is typically similar between containers and VMs for the same application
+- **Response times** show minimal difference once both platforms are warmed up
+- **CPU efficiency** favors containers due to shared kernel and reduced overhead
+
+**💾 Memory Usage:**
+- **Containers** use significantly less memory (50-150MB) as they share the host OS kernel
+- **VMs** require dedicated memory for the full guest OS (500MB-1GB+) plus application memory
+- Memory isolation is complete in VMs but containers share kernel memory
+
+**🔧 Resource Efficiency:**
+- **Container density** is much higher - you can run many more containers than VMs on the same hardware
+- **VM isolation** is stronger but comes with resource overhead
+- **Storage footprint** is dramatically different (100MB container image vs 2GB+ VM disk)
+
+**🏗️ Architecture Impact:**
+- **Native execution** (ARM64 containers on Apple Silicon) vs **emulated execution** (x86 VMs on Apple Silicon)
+- **Kernel sharing** in containers vs **dedicated kernel** in VMs
+- **Process isolation** vs **hardware-level isolation**
+
+### Key Takeaways for Cloud Computing
+
+1. **Containers excel at**:
+   - Microservices architectures
+   - Rapid scaling and deployment
+   - Resource-efficient cloud workloads
+   - CI/CD pipelines
+
+2. **VMs excel at**:
+   - Legacy application support
+   - Security-critical workloads requiring complete isolation
+   - Multi-tenant environments with different OS requirements
+   - Applications requiring specific kernel configurations
+
+3. **Hybrid approaches**:
+   - Many cloud platforms use containers running inside VMs
+   - Kubernetes nodes are often VMs running containerized workloads
+   - Security boundaries can be achieved with both technologies
+
+</div>
+
+<script>
+// Auto-refresh performance results if HTML files exist
+document.addEventListener('DOMContentLoaded', function() {
+    // This script attempts to load the latest comparison results
+    // when viewing this README as an HTML page
+    
+    function loadLatestResults() {
+        // Look for the latest comparison HTML file
+        fetch('./benchmark-results/')
+            .then(response => response.text())
+            .then(html => {
+                // Parse directory listing for latest comparison file
+                const matches = html.match(/comparison_\d+_\d+\.html/g);
+                if (matches && matches.length > 0) {
+                    const latestFile = matches.sort().pop();
+                    
+                    // Load and display the comparison results
+                    fetch(`./benchmark-results/${latestFile}`)
+                        .then(response => response.text())
+                        .then(html => {
+                            // Extract just the content div and insert it
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(html, 'text/html');
+                            const content = doc.querySelector('.content');
+                            
+                            if (content) {
+                                document.getElementById('performance-results-section').innerHTML = 
+                                    '<h3>📊 Latest Performance Comparison</h3>' + 
+                                    content.innerHTML +
+                                    '<p><em>Results automatically loaded from: ' + latestFile + '</em></p>';
+                            }
+                        })
+                        .catch(err => console.log('Could not load performance results'));
+                }
+            })
+            .catch(err => console.log('Benchmark results not yet available'));
+    }
+    
+    // Try to load results when viewing as HTML
+    loadLatestResults();
+});
+</script>
+
+<style>
+/* Inline styles for performance results when viewed as HTML */
+#performance-results-section .metric-comparison {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 20px;
+    align-items: center;
+    margin: 15px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+#performance-results-section .metric-value {
+    font-size: 1.5em;
+    font-weight: bold;
+    text-align: center;
+}
+
+#performance-results-section .metric-value.docker { color: #0db7ed; }
+#performance-results-section .metric-value.vm { color: #ff6b35; }
+
+#performance-results-section .vs-badge {
+    background: #6c757d;
+    color: white;
+    padding: 6px 10px;
+    border-radius: 15px;
+    font-weight: bold;
+    font-size: 0.8em;
+}
+
+#performance-results-section .summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin: 20px 0;
+}
+
+#performance-results-section .summary-card {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 8px;
+    padding: 15px;
+    text-align: center;
+    border-left: 4px solid #007bff;
+}
+</style>
+
 ## 🛠️ Development and Customization
 
 ### Adding Custom Benchmarks

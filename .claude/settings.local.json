@@ -14,7 +14,11 @@
       "Bash(command -v:*)",
       "Bash(vagrant plugin:*)",
       "Bash(./scripts/benchmark.sh:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(curl:*)",
+      "Bash(timeout:*)",
+      "Bash(/tmp/test_http.sh)",
+      "Bash(/tmp/test_function.sh)"
     ],
     "deny": [],
     "ask": []
