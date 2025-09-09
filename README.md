@@ -48,7 +48,8 @@ my-scratch-pad/
 
 **For VM Testing:**
 - Vagrant installed (2.4+)
-- VirtualBox or VMware provider
+- **Apple Silicon Macs:** VMware Fusion or Parallels Desktop (VirtualBox has limited ARM64 support)
+- **Intel Macs:** VirtualBox, VMware Fusion, or Parallels Desktop
 
 **For CI/CD:**
 - GitHub account
@@ -325,6 +326,19 @@ htop  # or Activity Monitor on macOS
 - Run multiple benchmark iterations
 - Check for thermal throttling on laptops
 - Verify adequate disk space and memory
+
+**Apple Silicon (ARM64) VM Issues:**
+```bash
+# VirtualBox ARM64 limitations - use alternative providers
+brew install --cask vmware-fusion    # Recommended for Apple Silicon
+# OR
+brew install --cask parallels        # Alternative option
+
+# Specify provider when running Vagrant
+VAGRANT_DEFAULT_PROVIDER=vmware_desktop vagrant up
+# OR
+VAGRANT_DEFAULT_PROVIDER=parallels vagrant up
+```
 
 ### Getting Help
 

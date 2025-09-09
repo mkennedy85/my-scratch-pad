@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(vagrant status:*)",
+      "Bash(VBoxManage:*)",
+      "Bash(vagrant up:*)",
+      "Bash(open:*)",
+      "Read(/Library/Application Support/**)",
+      "Read(/Applications/**)",
+      "Read(/Library/LaunchDaemons/**)",
+      "Read(/Library/**)",
+      "Read(/System/**)",
+      "Bash(vagrant destroy:*)",
+      "Bash(command -v:*)",
+      "Bash(vagrant plugin:*)",
+      "Bash(./scripts/benchmark.sh:*)",
+      "Bash(chmod:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

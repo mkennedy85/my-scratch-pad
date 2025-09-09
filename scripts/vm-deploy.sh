@@ -7,6 +7,15 @@ set -e
 
 echo "=== Vagrant Deployment Script ==="
 echo "Deploying My Scratch Pad VM"
+
+# Detect architecture and inform user
+if [ "$(uname -m)" = "arm64" ]; then
+    echo "Apple Silicon detected - VirtualBox will run x86 VM via emulation"
+    echo "This provides excellent performance comparison vs native ARM64 containers"
+else
+    echo "Intel Mac detected - using native x86 virtualization"
+fi
+
 echo ""
 
 # Check if VM is already running

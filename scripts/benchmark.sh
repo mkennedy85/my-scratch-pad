@@ -24,14 +24,14 @@ usage() {
     echo "Usage: $0 [docker|vm|compare]"
     echo ""
     echo "Commands:"
-    echo "  docker   - Benchmark Docker container deployment"
-    echo "  vm       - Benchmark Vagrant VM deployment"
-    echo "  compare  - Compare previous Docker and VM benchmark results"
+    echo "  docker      - Benchmark Docker container deployment"
+    echo "  vm          - Benchmark Vagrant VM deployment (auto-detects Parallels/VMware/VirtualBox)"
+    echo "  compare     - Compare previous Docker and VM benchmark results"
     echo ""
     echo "Examples:"
-    echo "  $0 docker    # Test container performance"
-    echo "  $0 vm        # Test VM performance"
-    echo "  $0 compare   # Show side-by-side comparison"
+    echo "  $0 docker       # Test container performance"
+    echo "  $0 vm           # Test VM performance (auto-detects best provider)"
+    echo "  $0 compare      # Show side-by-side comparison"
     exit 1
 }
 
@@ -109,9 +109,9 @@ measure_startup() {
     elif [ "$platform" = "vm" ]; then
         echo "Starting VM deployment..."
         cd "$PROJECT_ROOT"
-        if ! ./scripts/vagrant-deploy.sh > /tmp/vagrant-deploy.log 2>&1; then
+        if ! ./scripts/vm-deploy.sh > /tmp/vm-deploy.log 2>&1; then
             echo "VM deployment failed:"
-            cat /tmp/vagrant-deploy.log
+            cat /tmp/vm-deploy.log
             return 1
         fi
     fi
@@ -160,21 +160,23 @@ measure_resources() {
                 fi
             fi
         elif [ "$platform" = "vm" ]; then
-            # VM resource measurement
-            local vm_stats=$(vagrant ssh -c "free -m | grep '^Mem:' | awk '{print \$3}'; ps aux | awk '{sum += \$3} END {print sum}'" 2>/dev/null)
-            if [ -n "$vm_stats" ]; then
-                local mem_used=$(echo "$vm_stats" | head -1)
-                local cpu_pct=$(echo "$vm_stats" | tail -1)
-                
-                if [[ "$mem_used" =~ ^[0-9]+$ ]] && [[ "$cpu_pct" =~ ^[0-9]*\.?[0-9]+$ ]]; then
-                    total_memory=$(echo "$total_memory + $mem_used" | bc)
-                    total_cpu=$(echo "$total_cpu + $cpu_pct" | bc)
+            # VM resource measurement - simplified approach
+            if vagrant status | grep -q "running"; then
+                local vm_stats=$(vagrant ssh -c "free -m 2>/dev/null | grep '^Mem:' && top -bn1 | grep 'Cpu(s)'" 2>/dev/null || echo "")
+                if [ -n "$vm_stats" ]; then
+                    local mem_used=$(echo "$vm_stats" | head -1 | awk '{print $3}')
+                    local cpu_pct=$(echo "$vm_stats" | tail -1 | awk '{print $2}' | sed 's/%us.*//')
                     
-                    if (( $(echo "$mem_used > $peak_memory" | bc -l) )); then
-                        peak_memory=$mem_used
+                    if [[ "$mem_used" =~ ^[0-9]+$ ]] && [[ "$cpu_pct" =~ ^[0-9]*\.?[0-9]+$ ]]; then
+                        total_memory=$(echo "$total_memory + $mem_used" | bc)
+                        total_cpu=$(echo "$total_cpu + $cpu_pct" | bc)
+                        
+                        if (( $(echo "$mem_used > $peak_memory" | bc -l) )); then
+                            peak_memory=$mem_used
+                        fi
+                        
+                        measurements=$((measurements + 1))
                     fi
-                    
-                    measurements=$((measurements + 1))
                 fi
             fi
         fi
@@ -312,6 +314,14 @@ benchmark_vm() {
     local result_file="$RESULTS_DIR/vm_benchmark_$TIMESTAMP.txt"
     
     echo "=== VM Benchmark Started ===" | tee "$result_file"
+    
+    # Check if we're on Apple Silicon and inform user
+    if [ "$(uname -m)" = "arm64" ]; then
+        echo "Apple Silicon detected - VM will use available provider" | tee -a "$result_file"
+        echo "Performance comparison: VM (with virtualization overhead) vs native ARM64 containers" | tee -a "$result_file"
+        echo "" | tee -a "$result_file"
+    fi
+    
     get_system_info | tee -a "$result_file"
     
     # Clean up any existing VM
@@ -373,14 +383,14 @@ compare_results() {
     echo "" | tee -a "$comparison_file"
     
     # Extract key metrics for comparison
-    local docker_startup=$(grep "Startup Time:" "$docker_result" | awk '{print $3}' | sed 's/s//')
-    local vm_startup=$(grep "Startup Time:" "$vm_result" | awk '{print $3}' | sed 's/s//')
+    local docker_startup=$(grep "Total startup time:" "$docker_result" | awk '{print $4}' | sed 's/s$//')
+    local vm_startup=$(grep "Total startup time:" "$vm_result" | awk '{print $4}' | sed 's/s$//')
     
     local docker_rps=$(grep "Requests per Second:" "$docker_result" | awk '{print $4}')
     local vm_rps=$(grep "Requests per Second:" "$vm_result" | awk '{print $4}')
     
-    local docker_avg_response=$(grep "Average Response Time:" "$docker_result" | awk '{print $4}' | sed 's/s//')
-    local vm_avg_response=$(grep "Average Response Time:" "$vm_result" | awk '{print $4}' | sed 's/s//')
+    local docker_avg_response=$(grep "Average Response Time:" "$docker_result" | awk '{print $4}' | sed 's/s$//')
+    local vm_avg_response=$(grep "Average Response Time:" "$vm_result" | awk '{print $4}' | sed 's/s$//')
     
     echo "=== Startup Time Comparison ===" | tee -a "$comparison_file"
     echo "Docker: ${docker_startup}s" | tee -a "$comparison_file"
@@ -435,7 +445,7 @@ main() {
 
 # Make scripts executable
 chmod +x "$PROJECT_ROOT/scripts/docker-deploy.sh" 2>/dev/null || true
-chmod +x "$PROJECT_ROOT/scripts/vagrant-deploy.sh" 2>/dev/null || true
+chmod +x "$PROJECT_ROOT/scripts/vm-deploy.sh" 2>/dev/null || true
 
 # Run main function
 main "$@"
