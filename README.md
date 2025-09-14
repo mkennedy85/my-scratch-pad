@@ -125,6 +125,13 @@ Automated workflow includes:
 - **Security**: Vulnerability scanning with Docker Scout
 - **Publishing**: Automatic Docker Hub deployment
 
+## Artifacts
+
+- **Docker Hub Image:** [mkennedy1020/my-scratch-pad](https://hub.docker.com/repository/docker/mkennedy1020/my-scratch-pad/general)  
+- **Tags:**  
+  - `latest` – current stable build  
+  - `<commit-sha>` – immutable build reference for each commit 
+
 ## 📁 Repository Structure
 
 ```
